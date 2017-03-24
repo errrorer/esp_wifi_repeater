@@ -42,6 +42,13 @@ typedef enum {SIG_DO_NOTHING=0, SIG_START_SERVER=1, SIG_SEND_DATA, SIG_UART0, SI
 #define CONSOLE_SERVER_PORT  7777
 
 //
+// Define this if you want to have access to the config via Web.
+//
+#define WEB_CONFIG      1
+#define WEB_CONFIG_PORT 80
+
+
+//
 // Define this if you want to offer monitoring access to all transmitted data between the soft AP and all STAs.
 // Packets are mirrored in pcap format to the given port.
 // CAUTION: this might be a privacy issue!!!

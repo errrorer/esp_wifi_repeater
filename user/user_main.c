@@ -31,6 +31,10 @@
 #include "mqtt.h"
 #endif
 
+#ifdef WEB_CONFIG
+#include "web.h"
+#endif
+
 uint32_t readvdd33(void);
 uint32_t Vdd;
 
@@ -1131,6 +1135,142 @@ static void ICACHE_FLASH_ATTR tcp_client_connected_cb(void *arg)
 }
 #endif /* REMOTE_CONFIG */
 
+#ifdef WEB_CONFIG
+
+static void ICACHE_FLASH_ATTR handle_set_cmd(void *arg, char *cmd, char* val)
+{
+    struct espconn *pespconn = (struct espconn *)arg;
+    int max_current_cmd_size = MAX_CON_CMD_SIZE - (os_strlen(cmd)+1);
+    char cmd_line[MAX_CON_CMD_SIZE+1];
+
+    if (os_strlen(val) >= max_current_cmd_size)
+    {
+        val[max_current_cmd_size]='\0';
+    }
+    os_sprintf(cmd_line, "%s %s", cmd, val);
+    os_printf("web_config_client_recv_cb(): cmd line:%s\n",cmd_line);
+
+    ringbuf_memcpy_into(console_rx_buffer, cmd_line, os_strlen(cmd_line));
+    console_handle_command(pespconn);
+    ringbuf_memcpy_into(console_rx_buffer, "save", os_strlen("save"));
+    console_handle_command(pespconn);
+}
+
+static void ICACHE_FLASH_ATTR web_config_client_recv_cb(void *arg,
+                                                 char *data,
+                                                 unsigned short length)
+{
+    struct espconn *pespconn = (struct espconn *)arg;
+    char *kv, *sv;
+    bool do_reset = false;
+
+    char *str = strstr(data, " /?");
+    if (str != NULL)
+    {
+        str = strtok(str+3," ");
+
+        char* keyval = strtok_r(str,"&",&kv);
+        while (keyval != NULL)
+        {
+            char *key = strtok_r(keyval,"=", &sv);
+            char *val = strtok_r(NULL, "=", &sv);
+
+            keyval = strtok_r (NULL, "&", &kv);
+            os_printf("web_config_client_recv_cb(): key:%s:val:%s:\n",key,val);
+            if (val != NULL)
+            {
+
+                if (strcmp(key, "ssid") == 0)
+                {
+                    handle_set_cmd(pespconn, "set ssid", val);
+                    do_reset = true;
+                }
+                if (strcmp(key, "password") == 0)
+                {
+                    handle_set_cmd(pespconn, "set password", val);
+                    do_reset = true;
+                }
+                if (strcmp(key, "ap_ssid") == 0)
+                {
+                    handle_set_cmd(pespconn, "set ap_ssid", val);
+                    do_reset = true;
+                }
+                if (strcmp(key, "ap_password") == 0)
+                {
+                    handle_set_cmd(pespconn, "set ap_password", val);
+                    do_reset = true;
+                }
+                if (strcmp(key, "network") == 0)
+                {
+                    handle_set_cmd(pespconn, "set network", val);
+                    do_reset = true;
+                }
+                if (strcmp(key, "ap_open") == 0)
+                {
+                    if (strcmp(val, "wpa2") == 0)
+                    {
+                        ringbuf_memcpy_into(console_rx_buffer, "set ap_open 0", os_strlen("set ap_open 0"));
+                        console_handle_command(pespconn);
+                        ringbuf_memcpy_into(console_rx_buffer, "save", os_strlen("save"));
+                        console_handle_command(pespconn);
+                        do_reset = true;
+                    }
+                    if (strcmp(val, "open") == 0)
+                    {
+                        ringbuf_memcpy_into(console_rx_buffer, "set ap_open 1", os_strlen("set ap_open 1"));
+                        console_handle_command(pespconn);
+                        ringbuf_memcpy_into(console_rx_buffer, "save", os_strlen("save"));
+                        console_handle_command(pespconn);
+                        do_reset = true;
+                    }
+                }
+                if (strcmp(key, "reset") == 0)
+                {
+                    do_reset = true;
+                }
+            }
+        }
+        if (do_reset == true)
+        {
+            do_reset = false;
+            ringbuf_memcpy_into(console_rx_buffer, "reset", os_strlen("reset"));
+            console_handle_command(pespconn);
+        }
+    }
+}
+
+static void ICACHE_FLASH_ATTR web_config_client_discon_cb(void *arg)
+{
+    os_printf("web_config_client_discon_cb(): client disconnected\n");
+    struct espconn *pespconn = (struct espconn *)arg;
+}
+
+static void ICACHE_FLASH_ATTR web_config_client_sent_cb(void *arg)
+{
+    os_printf("web_config_client_discon_cb(): data sent to client\n");
+    struct espconn *pespconn = (struct espconn *)arg;
+
+    espconn_disconnect(pespconn);
+}
+
+/* Called when a client connects to the web config */
+static void ICACHE_FLASH_ATTR web_config_client_connected_cb(void *arg)
+{
+    struct espconn *pespconn = (struct espconn *)arg;
+
+    os_printf("web_config_client_connected_cb(): Client connected\r\n");
+
+    espconn_regist_disconcb(pespconn,   web_config_client_discon_cb);
+    espconn_regist_recvcb(pespconn,     web_config_client_recv_cb);
+    espconn_regist_sentcb(pespconn,     web_config_client_sent_cb);
+
+    ringbuf_reset(console_rx_buffer);
+    ringbuf_reset(console_tx_buffer);
+
+    espconn_sent(pespconn, CONFIG_PAGE, os_strlen(CONFIG_PAGE));
+}
+
+#endif /* WEB_CONFIG */
 
 bool toggle;
 // Timer cb function
@@ -1527,6 +1667,23 @@ void ICACHE_FLASH_ATTR user_init()
       /* Put the connection in accept mode */
       espconn_accept(pCon);
     }
+#endif
+
+#ifdef WEB_CONFIG
+        os_printf("Starting Web Config Server on %d port\r\n", WEB_CONFIG_PORT);
+        struct espconn *pCon = (struct espconn *)os_zalloc(sizeof(struct espconn));
+
+        /* Equivalent to bind */
+        pCon->type  = ESPCONN_TCP;
+        pCon->state = ESPCONN_NONE;
+        pCon->proto.tcp = (esp_tcp *)os_zalloc(sizeof(esp_tcp));
+        pCon->proto.tcp->local_port = WEB_CONFIG_PORT;
+
+        /* Register callback when clients connect to the server */
+        espconn_regist_connectcb(pCon, web_config_client_connected_cb);
+
+        /* Put the connection in accept mode */
+        espconn_accept(pCon);
 #endif
 
 #ifdef REMOTE_MONITORING
