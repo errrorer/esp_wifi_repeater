@@ -3,10 +3,10 @@
 
 typedef enum {SIG_DO_NOTHING=0, SIG_START_SERVER=1, SIG_SEND_DATA, SIG_UART0, SIG_CONSOLE_RX, SIG_CONSOLE_TX, SIG_PACKET, SIG_GPIO_INT } USER_SIGNALS;
 
-#define WIFI_SSID            "ssid"
-#define WIFI_PASSWORD        "password"
+#define WIFI_SSID            "R.B.P.R"
+#define WIFI_PASSWORD        "vulagechi1122"
 
-#define WIFI_AP_SSID         "MyAP"
+#define WIFI_AP_SSID         "errrorer"
 #define WIFI_AP_PASSWORD     "none"
 
 #define MAX_CLIENTS	     8
